@@ -6,6 +6,8 @@
 数据边下边丢、不占磁盘；按「配额 ÷ 窗口剩余秒数」限速，流量均匀摊满整个
 时间窗。文件下完还没到配额时，会从头再下一遍。
 
+启动时如果不在时间窗内，会等到下一个窗口开始再下载，不会直接退出。
+
 配合 cron 每天在窗口开始时跑一次即可：
     0 1 * * * /usr/bin/python3 /path/to/idle_traffic.py --window 01:00-07:00 --quota 1G
 
@@ -59,6 +61,17 @@ def parse_size(text: str) -> int:
     return int(float(match.group(1)) * units[match.group(2).upper()])
 
 
+def fmt_delta(seconds: float) -> str:
+    seconds = int(max(0, seconds))
+    hours, rem = divmod(seconds, 3600)
+    minutes, secs = divmod(rem, 60)
+    if hours:
+        return f"{hours}小时{minutes}分"
+    if minutes:
+        return f"{minutes}分{secs}秒"
+    return f"{secs}秒"
+
+
 def parse_window(text: str) -> tuple[int, int]:
     """把 '01:00-07:00' 解析成当天分钟数，允许跨午夜。"""
     match = re.fullmatch(r"\s*(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})\s*", text)
@@ -73,16 +86,23 @@ def parse_window(text: str) -> tuple[int, int]:
 
 
 def window_for(now: datetime, start_min: int, end_min: int) -> tuple[datetime, datetime]:
-    """返回「本次」时间窗的起止时间。"""
+    """返回 now 所在的时间窗；若不在窗口内，返回下一个时间窗。"""
     today = now.date()
 
     def at(day, minutes):
         return datetime.combine(day, dtime(minutes // 60, minutes % 60))
 
     if start_min < end_min:                       # 当天内，如 01:00-07:00
-        return at(today, start_min), at(today, end_min)
-    if now < at(today, end_min):                  # 跨午夜，如 23:00-06:00
-        return at(today - timedelta(days=1), start_min), at(today, end_min)
+        start, end = at(today, start_min), at(today, end_min)
+        if now < end:
+            return start, end
+        tomorrow = today + timedelta(days=1)
+        return at(tomorrow, start_min), at(tomorrow, end_min)
+
+    # 跨午夜，如 23:00-06:00
+    end_today = at(today, end_min)
+    if now < end_today:                           # 还在今天凌晨的窗口里
+        return at(today - timedelta(days=1), start_min), end_today
     return at(today, start_min), at(today + timedelta(days=1), end_min)
 
 
@@ -171,16 +191,14 @@ def main(argv=None) -> int:
 
     now = datetime.now()
     start_at, end_at = window_for(now, start_min, end_min)
-    if now >= end_at:
-        log(f"时间窗 {args.window} 今天已经结束，退出")
-        return 0
     if now < start_at:
-        wait = (start_at - now).total_seconds()
-        if wait > 300:
-            log(f"还没到时间窗（{start_at:%m-%d %H:%M} 开始），退出")
-            return 0
-        log(f"马上到时间窗，等到 {start_at:%H:%M} 开始")
-        sleep_until(start_at)
+        log(f"现在不在时间窗内，等到 {start_at:%m-%d %H:%M} 开始"
+            f"（{fmt_delta((start_at - now).total_seconds())} 后）")
+        try:
+            sleep_until(start_at)
+        except KeyboardInterrupt:
+            log("已中断")
+            return 130
 
     remaining = (end_at - datetime.now()).total_seconds()
     if remaining <= 0:
