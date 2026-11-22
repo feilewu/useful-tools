@@ -105,8 +105,8 @@ runwisp list -c /etc/runwisp/runwisp.toml
 sudo runuser -u runwisp -- /usr/local/bin/runwisp \
   -c /etc/runwisp/runwisp.toml --data /var/lib/runwisp run ipage-visit
 
-# 看运行记录
-ls -lt /var/lib/runwisp/logs/ipage-visit/ | head
+# 看运行记录（/var/lib/runwisp 是 700，需要 runwisp 或 root）
+sudo ls -lt /var/lib/runwisp/logs/ipage-visit/ | head
 ```
 
 ## 注意
