@@ -11,6 +11,7 @@
 - 显示压缩进度和统计信息
 - 支持加密压缩和解密还原
 - 智能跳过已压缩的文件
+- 支持随机文件名（通过配置开关开启）
 
 ## 支持的视频格式
 
@@ -105,6 +106,7 @@ sudo dnf install p7zip p7zip-plugins
 - `COMPRESSION_METHOD`: 压缩算法 (默认: lzma2)
 - `COMPRESSION_LEVEL`: 压缩级别 1-9 (默认: 9)
 - `SOLID_COMPRESSION`: 固实压缩 (默认: on)
+- `RANDOM_NAME_ENABLED`: 是否启用随机文件名 (true/false，默认: false)。启用后，压缩目标文件将使用 md5(原文件名)_时间戳 命名，无法通过固定文件名判断是否已压缩，因此每次运行都会重新压缩
 
 ## 重复压缩检测
 

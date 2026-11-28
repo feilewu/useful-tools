@@ -144,15 +144,39 @@ read -ra INCLUDE_ARRAY <<< "$INCLUDE_EXTENSIONS"
 # 将排除的扩展名转换为数组
 read -ra EXCLUDE_ARRAY <<< "$EXCLUDE_EXTENSIONS"
 
+# 获取目标压缩文件路径
+# 如果启用随机名，对原文件名计算 md5 hash 并拼上时间戳作为文件名；
+# 否则返回基于原始文件名的路径
+get_dest_file() {
+    local source_file="$1"
+    local relative_path="$2"
+    local filename=$(basename "$source_file")
+    local dest_subdir="$DEST_DIR/$(dirname "$relative_path")"
+    
+    if [[ "$RANDOM_NAME_ENABLED" == "true" ]]; then
+        # 生成随机文件名：md5(原文件名)_时间戳.7z
+        local name_hash
+        name_hash=$(echo -n "$filename" | md5sum | cut -d' ' -f1)
+        echo "$dest_subdir/${name_hash}_$(date +%s%N).7z"
+    else
+        echo "$dest_subdir/${filename%.*}.7z"
+    fi
+}
+
 # 检查文件是否已经压缩的函数
 is_file_compressed() {
     local source_file="$1"
     local relative_path="$2"
     
-    # 获取文件名和目录
-    local filename=$(basename "$source_file")
-    local dest_subdir="$DEST_DIR/$(dirname "$relative_path")"
-    local dest_file="$dest_subdir/${filename%.*}.7z"
+    # 启用随机名时，目标文件名包含时间戳且不记录映射，
+    # 无法通过固定文件名判断是否已压缩，因此每次都重新压缩
+    if [[ "$RANDOM_NAME_ENABLED" == "true" ]]; then
+        return 1  # 需要重新压缩
+    fi
+    
+    # 未启用随机名，按原始文件名检查
+    local dest_file
+    dest_file=$(get_dest_file "$source_file" "$relative_path")
     
     # 检查目标压缩文件是否存在
     if [ -f "$dest_file" ]; then
@@ -199,9 +223,9 @@ compress_video() {
     local dest_subdir="$DEST_DIR/$(dirname "$relative_path")"
     mkdir -p "$dest_subdir"
     
-    # 获取文件名和目录
-    local filename=$(basename "$source_file")
-    local dest_file="$dest_subdir/${filename%.*}.7z"
+    # 获取目标文件路径（可能是随机名）
+    local dest_file
+    dest_file=$(get_dest_file "$source_file" "$relative_path")
     
     # 设置当前正在压缩的文件
     current_compress_file="$dest_file"
@@ -289,9 +313,7 @@ for extension in "${INCLUDE_ARRAY[@]}"; do
         if compress_video "$video_file" "$relative_path"; then
             ((found_videos++))
             # 检查是否实际执行了压缩（而不是跳过）
-            filename=$(basename "$video_file")
-            dest_subdir="$DEST_DIR/$(dirname "$relative_path")"
-            dest_file="$dest_subdir/${filename%.*}.7z"
+            dest_file=$(get_dest_file "$video_file" "$relative_path")
             if [ -f "$dest_file" ]; then
                 # 检查文件是否是刚刚创建或更新的
                 dest_mtime=$(stat -c %Y "$dest_file" 2>/dev/null || echo "0")
@@ -322,9 +344,7 @@ for extension in "${INCLUDE_ARRAY[@]}"; do
         if compress_video "$video_file" "$relative_path"; then
             ((found_videos++))
             # 检查是否实际执行了压缩（而不是跳过）
-            filename=$(basename "$video_file")
-            dest_subdir="$DEST_DIR/$(dirname "$relative_path")"
-            dest_file="$dest_subdir/${filename%.*}.7z"
+            dest_file=$(get_dest_file "$video_file" "$relative_path")
             if [ -f "$dest_file" ]; then
                 # 检查文件是否是刚刚创建或更新的
                 dest_mtime=$(stat -c %Y "$dest_file" 2>/dev/null || echo "0")
