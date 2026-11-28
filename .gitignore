@@ -1,2 +1,20 @@
 __pycache__/
 *.pyc
+
+# 压缩输出（二进制 .7z 文件，构建/运行产物）
+compressed_output/
+*.7z
+
+# 测试生成的目录与数据
+test_videos/
+test_scan/
+test_encryption/
+test_skip/
+
+# 日志文件
+*.log
+compress.log
+
+# 操作系统元数据
+.DS_Store
+Thumbs.db
